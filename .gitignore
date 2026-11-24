@@ -95,6 +95,10 @@ desktop.ini
 *.pid
 *.seed
 
+# 后端数据产物目录（JSONL 复验/质检落盘文件，运行时自动生成）
+/data/
+backend/data/
+
 # BEGIN S11 LOCAL SNAPSHOT EXCLUSIONS
 **/.git/**
 **/.hg/**

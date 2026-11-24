@@ -11,12 +11,17 @@
 .
 ├── frontend/                 Vue 3 + Vite + TypeScript 前端
 │   ├── src/views/WorkbenchView.vue|tsx  全部模块共享工作台
+│   ├── src/views/SpikeReviewView.vue    尖峰分段复验与波形对照视图
+│   ├── src/views/WaveformCompare.vue    参与观测/隔离点/阈值带 SVG 波形
 │   ├── src/data/modules.ts              18个业务模块配置
 │   ├── src/api/              统一请求封装
 │   └── vite.config.ts        dev server 配置（open: false）
 ├── backend/                  FastAPI（Python） 后端
 │   ├── app/routers/resource.py  通用查询/导出/登记/动作接口
+│   ├── app/routers/spike_review.py  尖峰分段复验专用路由
 │   ├── app/services/<key>.py    每个模块独立领域逻辑
+│   ├── app/services/spike_review.py           窗口/基线快照/隔离点/复验
+│   ├── app/services/spike_review_scenario.py  升速前后标准业务场景
 │   ├── app/services/base.py     共享服务骨架
 │   └── app/store.py          内存数据仓库与示例数据
 ├── .gitignore
@@ -76,6 +81,28 @@ npm run dev
   `frontend/src/domain/<模块>.ts`，用于承载真实业务差异并维持36题位容量。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 尖峰分段复验与波形对照
+
+针对「设备升速前后各有短暂高值、旧班已确认后段为生产数据、迟到平稳值拉低前段基线」的场景，
+尖峰剔除（`spike_filter`）与时序质量（`series_quality`）提供逐段复核能力，后端在
+`app/services/spike_review.py`、路由在 `app/routers/spike_review.py`（前缀 `/api/spike-review`），
+前端入口为导航「尖峰复验对照」（`/spike-review`）。
+
+核心规则：
+
+- **窗口与有效窗**：复验以窗口为单位（如升速前 `PRE`、升速后 `POST`），每窗锁定独立时间区间与阈值口径。
+- **基线冻结**：已确认窗口的基线一经获准即冻结；之后到达的数据只登记为**隔离点**，
+  绝不参与原窗口阈值计算（不把后到数据混作原基线），冻结窗口也拒绝再计算新基线。
+- **多版本可查、单基线获准**：同一窗口可保留多份基线快照（含参与观测、数据指纹、隔离点、启停事件），
+  但一次正式复验只允许一条「已获准」基线；提交时若指定其它基线直接拒绝，不能混合两个基线。
+- **可复现**：每版基线对参与计算的连续观测生成 SHA-256 指纹；正式复验前校验指纹，不一致即拒绝。
+- **对照视图**：`GET /api/spike-review/comparison/{window_key}` 逐段返回实际参与阈值计算的连续观测、
+  被隔离的点、启停记录、基线版本与待复核尖峰；前端 SVG 波形同步绘制阈值带、均值线与隔离标记。
+- **落盘审计**：窗口、基线、观测、事件、待复核尖峰分别写入 `data/spike_review/` 下的 JSON/JSONL 文件。
+
+标准场景可通过 `POST /api/spike-review/scenario/init` 一键装载（幂等重置），
+集成测试见 `backend/tests/test_spike_review.py`。
 
 领域：数据工程
 子方向：数据采集、爬虫与RPA
